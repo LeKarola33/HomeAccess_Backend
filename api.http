@@ -1,0 +1,174 @@
+### HomeAccess API — Pruebas con REST Client (VS Code)
+### Instala la extensión: humao.rest-client
+### Clic en "Send Request" sobre cada bloque para ejecutar
+
+@baseUrl = http://localhost:5000/api/v1
+@token = PEGAR_ACCESS_TOKEN_AQUI
+
+# ══════════════════════════════════════════
+# AUTH
+# ══════════════════════════════════════════
+
+### 1. Registrar usuario
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "nombres": "Admin",
+  "apellidos": "Principal",
+  "cedula": "1234567890",
+  "email": "admin@conjunto.co",
+  "password": "Admin1234",
+  "role": "admin"
+}
+
+###
+
+### 2. Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@conjunto.co",
+  "password": "Admin1234"
+}
+
+###
+
+### 3. Obtener perfil (requiere token)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+###
+
+### 4. Renovar token
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "PEGAR_REFRESH_TOKEN_AQUI"
+}
+
+# ══════════════════════════════════════════
+# USUARIOS
+# ══════════════════════════════════════════
+
+### 5. Listar usuarios (admin)
+GET {{baseUrl}}/users?page=1&limit=10&sort=createdAt:desc
+Authorization: Bearer {{token}}
+
+###
+
+### 5b. Crear usuario (admin crea desde el panel)
+POST {{baseUrl}}/users/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombres": "Juan",
+  "apellidos": "Residente",
+  "cedula": "9876543210",
+  "tipo_documento": "CC",
+  "email": "juan.residente@mail.com",
+  "celular": "+573001234567",
+  "role": "residente",
+  "password": "Residente123"
+}
+
+###
+
+### 6. Detalle de usuario
+GET {{baseUrl}}/users/PEGAR_USER_ID
+Authorization: Bearer {{token}}
+
+# ══════════════════════════════════════════
+# UNIDADES
+# ══════════════════════════════════════════
+
+### 7. Listar unidades
+GET {{baseUrl}}/units?page=1&limit=20
+Authorization: Bearer {{token}}
+
+###
+
+### 8. Crear unidad
+POST {{baseUrl}}/units
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "numero": "301",
+  "torre": "A",
+  "piso": 3,
+  "tipo": "apartamento",
+  "estado": "desocupado"
+}
+
+# ══════════════════════════════════════════
+# CONTROL DE ACCESO
+# ══════════════════════════════════════════
+
+### 9. Registrar acceso
+POST {{baseUrl}}/access-logs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tipo_persona": "visitante",
+  "nombre_visitante": "Juan Visitante",
+  "tipo_acceso": "entrada",
+  "porteria": "Principal",
+  "metodo": "manual"
+}
+
+###
+
+### 10. Listar accesos (últimos 20)
+GET {{baseUrl}}/access-logs?page=1&limit=20
+Authorization: Bearer {{token}}
+
+###
+
+### 11. Personas actualmente adentro
+GET {{baseUrl}}/access-logs/active
+Authorization: Bearer {{token}}
+
+# ══════════════════════════════════════════
+# PAQUETES
+# ══════════════════════════════════════════
+
+### 12. Listar paquetes pendientes
+GET {{baseUrl}}/packages?estado=en_porteria
+Authorization: Bearer {{token}}
+
+###
+
+### 13. Registrar paquete
+POST {{baseUrl}}/packages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "remitente": "Amazon",
+  "transportadora": "Coordinadora",
+  "guia": "COO123456789",
+  "tipo": "paquete",
+  "unit_destino": "PEGAR_UNIT_ID",
+  "destinatario_id": "PEGAR_USER_ID"
+}
+
+###
+
+### 14. Entregar paquete
+PATCH {{baseUrl}}/packages/PEGAR_PACKAGE_ID/entregar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "entregado_a": "PEGAR_USER_ID"
+}
+
+###
+
+### 15. Health check
+GET http://localhost:5000/health
