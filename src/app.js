@@ -18,7 +18,10 @@ const unitRoutes = require('./routes/unit.routes');
 const conjuntoRoutes = require('./routes/conjunto.routes');
 const accessRoutes = require('./routes/access.routes');
 const packageRoutes = require('./routes/package.routes');
-
+const complexRoutes    = require('./routes/complex.routes');
+const commonAreaRoutes = require('./routes/commonArea.routes');
+const eventRoutes      = require('./routes/event.routes');
+const parkingRoutes    = require('./routes/parking.routes');
 // Middleware de manejo centralizado de errores
 const errorHandler = require('./middlewares/errorHandler');
 const notFound = require('./middlewares/notFound');
@@ -80,6 +83,10 @@ app.use('/api/v1/units', unitRoutes);          // CRUD de unidades residenciales
 app.use('/api/v1/conjuntos', conjuntoRoutes);  // CRUD de conjuntos residenciales
 app.use('/api/v1/access-logs', accessRoutes);  // Control de acceso portería
 app.use('/api/v1/packages', packageRoutes);    // Paquetes y correspondencia
+app.use('/api/v1/complexes', complexRoutes);//
+app.use('/api/v1/common-areas', commonAreaRoutes);
+app.use('/api/v1/events', eventRoutes);
+app.use('/api/v1/parking', parkingRoutes);
 
 // Health check endpoint (usado por Docker, balanceadores de carga, etc.)
 app.get('/health', (req, res) => {
