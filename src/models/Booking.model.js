@@ -25,13 +25,13 @@ const reservaSchema = new mongoose.Schema(
   {
     conjunto_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Conjunto',
+      ref: 'Complex',
       required: true,
     },
 
     area_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'AreaComun',
+      ref: 'CommonArea',
       required: [true, 'El área común es requerida'],
     },
 

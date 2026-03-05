@@ -22,6 +22,9 @@ const complexRoutes    = require('./routes/complex.routes');
 const commonAreaRoutes = require('./routes/commonArea.routes');
 const eventRoutes      = require('./routes/event.routes');
 const parkingRoutes    = require('./routes/parking.routes');
+const vehicleRoutes = require('./routes/vehicle.routes')
+
+
 // Middleware de manejo centralizado de errores
 const errorHandler = require('./middlewares/errorHandler');
 const notFound = require('./middlewares/notFound');
@@ -87,6 +90,8 @@ app.use('/api/v1/complexes', complexRoutes);//
 app.use('/api/v1/common-areas', commonAreaRoutes);
 app.use('/api/v1/events', eventRoutes);
 app.use('/api/v1/parking', parkingRoutes);
+app.use('/api/v1/vehicles', vehicleRoutes);//vehiculos
+
 
 // Health check endpoint (usado por Docker, balanceadores de carga, etc.)
 app.get('/health', (req, res) => {

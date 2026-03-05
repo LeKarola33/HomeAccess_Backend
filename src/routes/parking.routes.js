@@ -1,24 +1,24 @@
 /**
- * HomeAccess - Rutas de Parqueadero
- * ===================================
+ * HomeAccess - Parking Routes
+ * ============================
  *
- * VEHÍCULOS:
- *   GET    /api/v1/parqueadero/vehiculos              → listar todos (admin/portero) o propios (residente)
- *   POST   /api/v1/parqueadero/vehiculos              → registrar vehículo (admin)
- *   GET    /api/v1/parqueadero/vehiculos/:id          → detalle de vehículo
- *   PUT    /api/v1/parqueadero/vehiculos/:id          → actualizar datos (admin)
- *   DELETE /api/v1/parqueadero/vehiculos/:id          → eliminar (soft delete, admin)
+ * VEHICLES:
+ *   GET    /api/v1/parking/vehicles                       → list all (admin/security) or own (resident)
+ *   POST   /api/v1/parking/vehicles                       → register vehicle (admin)
+ *   GET    /api/v1/parking/vehicles/:id                   → vehicle detail
+ *   PUT    /api/v1/parking/vehicles/:id                   → update data (admin)
+ *   DELETE /api/v1/parking/vehicles/:id                   → soft delete (admin)
  *
- * ASIGNACIÓN DE PUESTO:
- *   PATCH  /api/v1/parqueadero/vehiculos/:id/asignar      → asignar puesto a vehículo (admin)
- *   PATCH  /api/v1/parqueadero/vehiculos/:id/desasignar   → liberar puesto (admin)
+ * SPOT ASSIGNMENT:
+ *   PATCH  /api/v1/parking/vehicles/:vehicleId/assign     → assign spot (admin)
+ *   PATCH  /api/v1/parking/vehicles/:vehicleId/unassign   → free spot (admin)
  *
- * PUESTOS:
- *   GET    /api/v1/parqueadero/puestos                → listar puestos con estado y vehículo
- *   GET    /api/v1/parqueadero/puestos/:puestoId      → detalle de puesto
+ * SPOTS:
+ *   GET    /api/v1/parking/spots                          → list spots with status and vehicle
+ *   GET    /api/v1/parking/spots/:spotId                  → spot detail
  *
- * VISTA POR UNIDAD:
- *   GET    /api/v1/parqueadero/unidad/:unitId         → vehículos y puestos de un apto
+ * BY UNIT:
+ *   GET    /api/v1/parking/unit/:unitId                   → vehicles and spots for an apartment
  */
 
 const express = require('express');
@@ -30,7 +30,7 @@ const router = express.Router();
 
 router.use(protect);
 
-// ─── Validador de errores ────────────────────────────────────────────────────
+// ─── Validation error handler ─────────────────────────────────────────────────
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -39,86 +39,56 @@ const validate = (req, res, next) => {
   next();
 };
 
-// ─── Validadores ──────────────────────────────────────────────────────────────
+// ─── Validators ───────────────────────────────────────────────────────────────
 
-const vehiculoValidators = [
+const vehicleValidators = [
   body('unit_id')
-    .notEmpty().withMessage('unit_id es requerido')
-    .isMongoId().withMessage('unit_id inválido'),
+    .notEmpty().withMessage('unit_id is required')
+    .isMongoId().withMessage('unit_id is invalid'),
   body('propietario_id')
-    .notEmpty().withMessage('propietario_id es requerido')
-    .isMongoId().withMessage('propietario_id inválido'),
+    .notEmpty().withMessage('propietario_id is required')
+    .isMongoId().withMessage('propietario_id is invalid'),
   body('placa')
-    .trim().notEmpty().withMessage('La placa es requerida')
+    .optional({ nullable: true })
+    .trim()
     .matches(/^[A-Za-z]{3}[0-9]{2}[A-Za-z0-9]{1}$/)
-    .withMessage('Formato de placa inválido (Ej: ABC123)'),
+    .withMessage('Formato de placa inválido (Ej: ABC123)')
+    .toUpperCase(),
   body('tipo')
-    .isIn(['carro', 'moto', 'bicicleta', 'otro'])
-    .withMessage('Tipo inválido: carro, moto, bicicleta, otro'),
+    .isIn(['carro', 'moto', 'bicicleta', 'patineta', 'otro'])
+    .withMessage('Tipo inválido. Valores permitidos: carro, moto, bicicleta, patineta, otro'),
   body('marca').optional().trim().isLength({ max: 50 }),
   body('modelo').optional().trim().isLength({ max: 50 }),
   body('color').optional().trim().isLength({ max: 30 }),
-  body('anio').optional().isInt({ min: 1970 }).withMessage('Año inválido'),
+  body('anio').optional().isInt({ min: 1970 }).withMessage('Invalid year'),
 ];
 
-const asignarValidators = [
+const assignValidators = [
   body('parqueadero_id')
-    .notEmpty().withMessage('parqueadero_id es requerido')
-    .isMongoId().withMessage('parqueadero_id inválido'),
+    .notEmpty().withMessage('parqueadero_id is required')
+    .isMongoId().withMessage('parqueadero_id is invalid'),
 ];
 
-// ─── Rutas de Vehículos ───────────────────────────────────────────────────────
+// ─── Vehicle routes ───────────────────────────────────────────────────────────
 
-// Listar: admin/portero ven todos; residente ve solo los de su unidad
-router.get('/vehiculos', ctrl.getVehiculos);
+router.get('/vehicles',        ctrl.getVehicles);
+router.post('/vehicles',       authorize('admin'), vehicleValidators, validate, ctrl.createVehicle);
+router.get('/vehicles/:id',    ctrl.getVehicleById);
+router.put('/vehicles/:id',    authorize('admin'), ctrl.updateVehicle);
+router.delete('/vehicles/:id', authorize('admin'), ctrl.deleteVehicle);
 
-// Registrar vehículo (admin)
-router.post(
-  '/vehiculos',
-  authorize('admin'),
-  vehiculoValidators,
-  validate,
-  ctrl.registrarVehiculo
-);
+// ─── Spot assignment ──────────────────────────────────────────────────────────
 
-// Detalle de vehículo (todos los roles autenticados)
-router.get('/vehiculos/:id', ctrl.getVehiculoById);
+router.patch('/vehicles/:vehicleId/assign',   authorize('admin'), assignValidators, validate, ctrl.assignSpot);
+router.patch('/vehicles/:vehicleId/unassign', authorize('admin'), ctrl.unassignSpot);
 
-// Actualizar datos del vehículo (admin)
-router.put('/vehiculos/:id', authorize('admin'), ctrl.actualizarVehiculo);
+// ─── Spot routes ──────────────────────────────────────────────────────────────
 
-// Eliminar vehículo - soft delete (admin)
-router.delete('/vehiculos/:id', authorize('admin'), ctrl.eliminarVehiculo);
+router.get('/spots',         ctrl.getSpots);
+router.get('/spots/:spotId', ctrl.getSpotById);
 
-// ─── Asignación de parqueadero ────────────────────────────────────────────────
+// ─── By unit ──────────────────────────────────────────────────────────────────
 
-// Asignar puesto a un vehículo
-router.patch(
-  '/vehiculos/:vehiculoId/asignar',
-  authorize('admin'),
-  asignarValidators,
-  validate,
-  ctrl.asignarParqueadero
-);
-
-// Liberar puesto de un vehículo
-router.patch(
-  '/vehiculos/:vehiculoId/desasignar',
-  authorize('admin'),
-  ctrl.desasignarParqueadero
-);
-
-// ─── Rutas de Puestos ─────────────────────────────────────────────────────────
-
-// Mapa completo de puestos: todos los roles (portería necesita consultar)
-router.get('/puestos', ctrl.getPuestos);
-
-// Detalle de un puesto específico
-router.get('/puestos/:puestoId', ctrl.getPuestoById);
-
-// ─── Vista por unidad residencial ─────────────────────────────────────────────
-
-// Vehículos y puestos de un apartamento específico
-router.get('/unidad/:unitId', ctrl.getParqueaderoByUnidad);
+router.get('/unit/:unitId',  ctrl.getVehiclesByUnit);
 
 module.exports = router;

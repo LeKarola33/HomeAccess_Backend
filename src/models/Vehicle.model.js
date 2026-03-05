@@ -1,19 +1,19 @@
 /**
- * HomeAccess - Modelo de Vehículo
- * ================================
- * Registra los vehículos de los residentes del conjunto.
- * Un vehículo pertenece a una unidad residencial y puede tener
- * asignado un puesto de parqueadero.
+ * HomeAccess - Vehicle Model
+ * ===========================
+ * Registers vehicles belonging to residents of the complex.
+ * A vehicle belongs to a residential unit and can have
+ * a parking spot assigned to it.
  *
- * RELACIONES:
- *   Vehicle → Unit (unit_id)         el apto/casa al que pertenece
- *   Vehicle → Unit (parqueadero_id)  el puesto asignado (tipo=parqueadero en Unit)
- *   Vehicle → User (propietario_id)  el residente dueño del vehículo
+ * RELATIONSHIPS:
+ *   Vehicle → Unit (unit_id)          the apartment/house it belongs to
+ *   Vehicle → Unit (parqueadero_id)   the assigned spot (Unit with tipo='parqueadero')
+ *   Vehicle → User (propietario_id)   the resident who owns the vehicle
  *
- * NOTA SOBRE Unit.vehiculos[]:
- *   El array vehiculos[] en Unit.model.js ya referencia este modelo.
- *   Al crear/eliminar un vehículo, el controller actualiza ese array
- *   para mantener la consistencia bidireccional.
+ * NOTE ON Unit.vehiculos[]:
+ *   The vehiculos[] array in Unit.model.js already references this model.
+ *   When creating/deleting a vehicle, the controller updates that array
+ *   to maintain bidirectional consistency.
  */
 
 const mongoose = require('mongoose');
@@ -22,85 +22,88 @@ const vehicleSchema = new mongoose.Schema(
   {
     conjunto_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Conjunto',
+      ref: 'Complex',
       required: true,
     },
 
-    // ─── Relación con la unidad residencial ───────────────────────────────────
-    // La unidad a la que pertenece el vehículo (apartamento, casa, local)
+    // ─── Residential unit relationship ────────────────────────────────────────
     unit_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Unit',
-      required: [true, 'La unidad residencial es requerida'],
+      required: [true, 'The residential unit is required'],
     },
 
-    // Propietario o residente responsable del vehículo
+    // Resident responsible for the vehicle
     propietario_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'El propietario del vehículo es requerido'],
+      required: [true, 'The vehicle owner is required'],
     },
 
-    // ─── Datos del vehículo ───────────────────────────────────────────────────
+    // ─── Vehicle data ─────────────────────────────────────────────────────────
 
     placa: {
       type: String,
-      required: [true, 'La placa es requerida'],
+      // Required only for: carro, moto
+      // Optional for: bicicleta, patineta, otro (no plate in Colombia)
+      required: false,
       trim: true,
       uppercase: true,
-      // Formato colombiano: ABC123 (carros) o ABC12A (motos nuevas)
-      match: [/^[A-Z]{3}[0-9]{2}[A-Z0-9]{1}$/, 'Formato de placa colombiana inválido (Ej: ABC123)'],
+      default: null,
+      // Colombian format: ABC123 (cars) or ABC12A (new motorcycles)
+      // Only validated when present
+      match: [/^[A-Z]{3}[0-9]{2}[A-Z0-9]{1}$/, 'Invalid Colombian plate format (e.g. ABC123)'],
     },
 
     tipo: {
       type: String,
       enum: {
-        values: ['carro', 'moto', 'bicicleta', 'otro'],
-        message: 'Tipo de vehículo inválido',
+        values: ['carro', 'moto', 'bicicleta', 'patineta', 'otro'],
+        message: 'Invalid vehicle type',
       },
-      required: [true, 'El tipo de vehículo es requerido'],
+      required: [true, 'Vehicle type is required'],
     },
 
     marca: {
       type: String,
       trim: true,
-      maxlength: [50, 'La marca no puede superar 50 caracteres'],
+      maxlength: [50, 'Brand cannot exceed 50 characters'],
     },
 
     modelo: {
       type: String,
       trim: true,
-      maxlength: [50, 'El modelo no puede superar 50 caracteres'],
+      maxlength: [50, 'Model cannot exceed 50 characters'],
     },
 
     color: {
       type: String,
       trim: true,
-      maxlength: [30, 'El color no puede superar 30 caracteres'],
+      maxlength: [30, 'Color cannot exceed 30 characters'],
     },
 
     anio: {
       type: Number,
-      min: [1970, 'Año mínimo: 1970'],
-      max: [new Date().getFullYear() + 1, 'Año inválido'],
+      min: [1970, 'Minimum year: 1970'],
+      max: [new Date().getFullYear() + 1, 'Invalid year'],
     },
 
-    // ─── Parqueadero asignado ─────────────────────────────────────────────────
-    // Referencia a una Unit de tipo='parqueadero'.
-    // null = sin puesto asignado (vehículo registrado pero sin parqueadero)
+    // ─── Assigned parking spot ────────────────────────────────────────────────
+    // References a Unit with tipo='parqueadero'.
+    // null = no spot assigned (vehicle registered but without parking)
     parqueadero_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Unit', // Un parqueadero ES una unidad con tipo='parqueadero'
+      ref: 'Unit',
       default: null,
     },
 
-    // ─── Estado ───────────────────────────────────────────────────────────────
+    // ─── Status ───────────────────────────────────────────────────────────────
     activo: {
       type: Boolean,
       default: true,
     },
 
-    // Soft delete — patrón del proyecto
+    // Soft delete — project pattern
     deletedAt: {
       type: Date,
       default: null,
@@ -109,21 +112,22 @@ const vehicleSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ─── Índices ──────────────────────────────────────────────────────────────────
+// ─── Indexes ──────────────────────────────────────────────────────────────────
 
-// Placa única por conjunto (evita registrar el mismo vehículo dos veces)
-vehicleSchema.index({ placa: 1, conjunto_id: 1 }, { unique: true });
+// Unique plate per complex (prevents duplicate vehicle registration)
+// sparse: true allows multiple null plates (bicicletas/patinetas without plate)
+vehicleSchema.index({ placa: 1, conjunto_id: 1 }, { unique: true, sparse: true });
 
-// Listar vehículos de una unidad (consulta más frecuente desde el frontend)
+// List vehicles by unit (most frequent query)
 vehicleSchema.index({ unit_id: 1, activo: 1 });
 
-// Listar vehículos por parqueadero asignado
+// List vehicles by assigned spot
 vehicleSchema.index({ parqueadero_id: 1 });
 
-// Búsqueda por placa (portería identifica vehículos)
+// Plate search (security booth identifies vehicles by plate)
 vehicleSchema.index({ placa: 1 });
 
-// ─── Query middleware: excluir soft-deleted ───────────────────────────────────
+// ─── Query middleware: exclude soft-deleted ───────────────────────────────────
 vehicleSchema.pre(/^find/, function (next) {
   if (!this.getOptions().includeDeleted) {
     this.where({ deletedAt: null });

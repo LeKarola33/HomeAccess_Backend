@@ -78,7 +78,7 @@ const eventoSchema = new mongoose.Schema(
   {
     conjunto_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Conjunto',
+      ref: 'Complex',
       required: true,
     },
 
@@ -131,7 +131,7 @@ const eventoSchema = new mongoose.Schema(
     // Referencia opcional al área común si el evento ocurre en una
     area_comun_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'AreaComun',
+      ref: 'CommonArea',
       default: null,
     },
 

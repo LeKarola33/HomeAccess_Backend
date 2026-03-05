@@ -1,32 +1,32 @@
 /**
- * HomeAccess - Controlador de Parqueadero
- * =========================================
- * Gestiona vehículos registrados y asignación de puestos de parqueadero.
+ * HomeAccess - Parking Controller
+ * =================================
+ * Manages registered vehicles and parking spot assignment.
  *
- * LÓGICA DE NEGOCIO CLAVE:
- *   - Un "parqueadero" en este sistema es una Unit con tipo='parqueadero'.
- *     Esto aprovecha el modelo existente y reutiliza la paginación/filtros.
- *   - Al registrar un vehículo, se agrega su _id al array Unit.vehiculos[].
- *   - Al asignar parqueadero: el puesto (Unit tipo=parqueadero) cambia su
- *     estado a 'ocupado' y se guarda en Vehicle.parqueadero_id.
- *   - Al desasignar: el puesto vuelve a 'desocupado' y parqueadero_id=null.
- *   - Un puesto solo puede tener UN vehículo a la vez.
+ * BUSINESS LOGIC:
+ *   - A "parking spot" is a Unit with tipo='parqueadero'.
+ *     This reuses the existing model and its pagination/filter logic.
+ *   - When registering a vehicle, its _id is added to Unit.vehiculos[].
+ *   - When assigning a spot: the Unit changes estado to 'ocupado'
+ *     and Vehicle.parqueadero_id is set.
+ *   - When unassigning: the Unit returns to 'desocupado' and parqueadero_id=null.
+ *   - A spot can only have ONE vehicle at a time.
  */
 
 const Vehicle = require('../models/Vehicle.model');
-const Unit = require('../models/Unit.model');
+const Unit    = require('../models/Unit.model');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VEHÍCULOS
+// VEHICLES
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/v1/parqueadero/vehiculos
- * Lista todos los vehículos del conjunto con paginación.
- * Admin/portero: todos | Residente: solo los de su unidad.
- * Filtros opcionales: ?unit_id=...  ?tipo=carro  ?placa=ABC
+ * GET /api/v1/parking/vehicles
+ * Lists all vehicles in the complex with pagination.
+ * Admin/security: all | Resident: only their unit's vehicles.
+ * Optional filters: ?unit_id=  ?tipo=carro  ?placa=ABC  ?page=1  ?limit=20
  */
-const getVehiculos = async (req, res, next) => {
+const getVehicles = async (req, res, next) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
@@ -34,22 +34,20 @@ const getVehiculos = async (req, res, next) => {
 
     const filter = { conjunto_id: req.user.conjunto_id, activo: true };
 
-    // Residentes y propietarios solo ven los vehículos de su propia unidad
+    // Residents and owners only see vehicles from their own unit
     if (!['admin', 'portero', 'vigilante'].includes(req.user.role)) {
-      // req.user.unidades[] viene del modelo User (array de unit_ids)
       filter.unit_id = { $in: req.user.unidades };
     }
 
-    // Filtros opcionales desde query params
-    if (req.query.unit_id)    filter.unit_id = req.query.unit_id;
-    if (req.query.tipo)       filter.tipo    = req.query.tipo;
-    if (req.query.placa)      filter.placa   = new RegExp(req.query.placa.toUpperCase(), 'i');
+    if (req.query.unit_id) filter.unit_id = req.query.unit_id;
+    if (req.query.tipo)    filter.tipo    = req.query.tipo;
+    if (req.query.placa)   filter.placa   = new RegExp(req.query.placa.toUpperCase(), 'i');
 
-    const [vehiculos, total] = await Promise.all([
+    const [vehicles, total] = await Promise.all([
       Vehicle.find(filter)
-        .populate('unit_id',         'numero torre piso')
-        .populate('propietario_id',  'nombres apellidos celular')
-        .populate('parqueadero_id',  'numero estado')
+        .populate('unit_id',        'numero torre piso')
+        .populate('propietario_id', 'nombres apellidos celular')
+        .populate('parqueadero_id', 'numero estado')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -59,7 +57,7 @@ const getVehiculos = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: vehiculos,
+      data: vehicles,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -68,13 +66,13 @@ const getVehiculos = async (req, res, next) => {
 };
 
 /**
- * GET /api/v1/parqueadero/vehiculos/:id
- * Detalle de un vehículo específico.
+ * GET /api/v1/parking/vehicles/:id
+ * Returns details of a specific vehicle.
  */
-const getVehiculoById = async (req, res, next) => {
+const getVehicleById = async (req, res, next) => {
   try {
-    const vehiculo = await Vehicle.findOne({
-      _id: req.params.id,
+    const vehicle = await Vehicle.findOne({
+      _id:         req.params.id,
       conjunto_id: req.user.conjunto_id,
     })
       .populate('unit_id',        'numero torre piso')
@@ -82,36 +80,41 @@ const getVehiculoById = async (req, res, next) => {
       .populate('parqueadero_id', 'numero estado')
       .lean();
 
-    if (!vehiculo) {
-      return res.status(404).json({ success: false, message: 'Vehículo no encontrado' });
+    if (!vehicle) {
+      return res.status(404).json({ success: false, message: 'Vehicle not found' });
     }
 
-    res.status(200).json({ success: true, data: vehiculo });
+    res.status(200).json({ success: true, data: vehicle });
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * POST /api/v1/parqueadero/vehiculos
- * Registra un nuevo vehículo y lo vincula a su unidad.
- * También actualiza Unit.vehiculos[] para mantener la referencia bidireccional.
+ * POST /api/v1/parking/vehicles
+ * Registers a new vehicle and links it to its unit.
+ * Also updates Unit.vehiculos[] to maintain bidirectional reference.
+ * Admin only.
  */
-const registrarVehiculo = async (req, res, next) => {
+const createVehicle = async (req, res, next) => {
   try {
     const { unit_id, propietario_id, placa, tipo, marca, modelo, color, anio } = req.body;
 
-    // Verificar que la unidad existe y pertenece al conjunto
-    const unit = await Unit.findOne({
-      _id: unit_id,
-      conjunto_id: req.user.conjunto_id,
-    });
+    const unit = await Unit.findOne({ _id: unit_id, conjunto_id: req.user.conjunto_id });
     if (!unit) {
-      return res.status(404).json({ success: false, message: 'Unidad no encontrada' });
+      return res.status(404).json({ success: false, message: 'Unit not found' });
     }
 
-    // Crear el vehículo (la placa se uppercase en el modelo via 'uppercase: true')
-    const vehiculo = await Vehicle.create({
+    // Plate required for cars and motorcycles, optional for bikes/scooters/other
+    const requiresPlate = ['carro', 'moto'].includes(tipo);
+    if (requiresPlate && !placa) {
+      return res.status(400).json({
+        success: false,
+        message: `La placa es obligatoria para vehículos de tipo '${tipo}'`,
+      });
+    }
+
+    const vehicle = await Vehicle.create({
       conjunto_id: req.user.conjunto_id,
       unit_id,
       propietario_id,
@@ -123,12 +126,12 @@ const registrarVehiculo = async (req, res, next) => {
       anio,
     });
 
-    // Mantener bidireccionalidad: agregar _id del vehículo al array de la unidad
+    // Maintain bidirectionality
     await Unit.findByIdAndUpdate(unit_id, {
-      $addToSet: { vehiculos: vehiculo._id }, // $addToSet evita duplicados
+      $addToSet: { vehiculos: vehicle._id },
     });
 
-    const populated = await vehiculo.populate([
+    const populated = await vehicle.populate([
       { path: 'unit_id',        select: 'numero torre' },
       { path: 'propietario_id', select: 'nombres apellidos' },
     ]);
@@ -136,7 +139,7 @@ const registrarVehiculo = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: populated,
-      message: `Vehículo ${vehiculo.placa} registrado exitosamente`,
+      message: `Vehicle ${vehicle.placa} registered successfully`,
     });
   } catch (error) {
     next(error);
@@ -144,16 +147,16 @@ const registrarVehiculo = async (req, res, next) => {
 };
 
 /**
- * PUT /api/v1/parqueadero/vehiculos/:id
- * Actualiza datos del vehículo. No se puede cambiar la placa ni el conjunto.
+ * PUT /api/v1/parking/vehicles/:id
+ * Updates vehicle data. Plate and complex are immutable.
+ * Admin only.
  */
-const actualizarVehiculo = async (req, res, next) => {
+const updateVehicle = async (req, res, next) => {
   try {
-    // Placa y conjunto son inmutables después de crear
     const restricted = ['placa', 'conjunto_id', 'parqueadero_id', 'deletedAt'];
     restricted.forEach((f) => delete req.body[f]);
 
-    const vehiculo = await Vehicle.findOneAndUpdate(
+    const vehicle = await Vehicle.findOneAndUpdate(
       { _id: req.params.id, conjunto_id: req.user.conjunto_id },
       req.body,
       { new: true, runValidators: true }
@@ -161,220 +164,190 @@ const actualizarVehiculo = async (req, res, next) => {
       .populate('unit_id',        'numero torre')
       .populate('parqueadero_id', 'numero');
 
-    if (!vehiculo) {
-      return res.status(404).json({ success: false, message: 'Vehículo no encontrado' });
+    if (!vehicle) {
+      return res.status(404).json({ success: false, message: 'Vehicle not found' });
     }
 
-    res.status(200).json({ success: true, data: vehiculo, message: 'Vehículo actualizado' });
+    res.status(200).json({ success: true, data: vehicle, message: 'Vehicle updated' });
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * DELETE /api/v1/parqueadero/vehiculos/:id
- * Soft delete del vehículo.
- * Si tenía parqueadero asignado, libera el puesto automáticamente.
- * También remueve el _id del array Unit.vehiculos[].
+ * DELETE /api/v1/parking/vehicles/:id
+ * Soft deletes a vehicle. Frees the spot if one was assigned.
+ * Also removes _id from Unit.vehiculos[].
+ * Admin only.
  */
-const eliminarVehiculo = async (req, res, next) => {
+const deleteVehicle = async (req, res, next) => {
   try {
-    const vehiculo = await Vehicle.findOne({
-      _id: req.params.id,
+    const vehicle = await Vehicle.findOne({
+      _id:         req.params.id,
       conjunto_id: req.user.conjunto_id,
     });
 
-    if (!vehiculo) {
-      return res.status(404).json({ success: false, message: 'Vehículo no encontrado' });
+    if (!vehicle) {
+      return res.status(404).json({ success: false, message: 'Vehicle not found' });
     }
 
-    // Si tenía parqueadero, liberar el puesto antes de eliminar
-    if (vehiculo.parqueadero_id) {
-      await Unit.findByIdAndUpdate(vehiculo.parqueadero_id, {
-        estado: 'desocupado',
-      });
+    if (vehicle.parqueadero_id) {
+      await Unit.findByIdAndUpdate(vehicle.parqueadero_id, { estado: 'desocupado' });
     }
 
-    // Soft delete del vehículo
     await Vehicle.findByIdAndUpdate(req.params.id, {
-      activo: false,
-      deletedAt: new Date(),
+      activo:         false,
+      deletedAt:      new Date(),
       parqueadero_id: null,
     });
 
-    // Remover del array vehiculos[] de la unidad
-    await Unit.findByIdAndUpdate(vehiculo.unit_id, {
-      $pull: { vehiculos: vehiculo._id },
+    await Unit.findByIdAndUpdate(vehicle.unit_id, {
+      $pull: { vehiculos: vehicle._id },
     });
 
-    res.status(200).json({ success: true, message: 'Vehículo eliminado del registro' });
+    res.status(200).json({ success: true, message: 'Vehicle removed from registry' });
   } catch (error) {
     next(error);
   }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PUESTOS DE PARQUEADERO
+// PARKING SPOTS
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/v1/parqueadero/puestos
- * Lista todos los puestos de parqueadero del conjunto (Unit tipo='parqueadero').
- * Incluye el vehículo asignado si el puesto está ocupado.
- * Filtros: ?estado=desocupado | ?estado=ocupado
+ * GET /api/v1/parking/spots
+ * Lists all parking spots (Units with tipo='parqueadero').
+ * Includes assigned vehicle on occupied spots.
+ * Optional filter: ?estado=desocupado | ?estado=ocupado
  */
-const getPuestos = async (req, res, next) => {
+const getSpots = async (req, res, next) => {
   try {
-    const filter = {
-      conjunto_id: req.user.conjunto_id,
-      tipo: 'parqueadero',
-    };
-
+    const filter = { conjunto_id: req.user.conjunto_id, tipo: 'parqueadero' };
     if (req.query.estado) filter.estado = req.query.estado;
 
-    const puestos = await Unit.find(filter)
+    const spots = await Unit.find(filter)
       .populate('propietario_actual', 'nombres apellidos')
       .sort({ numero: 1 })
       .lean();
 
-    // Para cada puesto ocupado, adjuntar el vehículo asignado
-    const puestosConVehiculo = await Promise.all(
-      puestos.map(async (puesto) => {
-        if (puesto.estado === 'ocupado') {
-          const vehiculo = await Vehicle.findOne({
-            parqueadero_id: puesto._id,
-            activo: true,
-          })
+    const spotsWithVehicle = await Promise.all(
+      spots.map(async (spot) => {
+        if (spot.estado === 'ocupado') {
+          const vehicle = await Vehicle.findOne({ parqueadero_id: spot._id, activo: true })
             .populate('unit_id',        'numero torre')
             .populate('propietario_id', 'nombres apellidos')
             .lean();
-          return { ...puesto, vehiculo_asignado: vehiculo };
+          return { ...spot, vehiculo_asignado: vehicle };
         }
-        return { ...puesto, vehiculo_asignado: null };
+        return { ...spot, vehiculo_asignado: null };
       })
     );
 
-    const resumen = {
-      total:      puestos.length,
-      ocupados:   puestos.filter((p) => p.estado === 'ocupado').length,
-      libres:     puestos.filter((p) => p.estado === 'desocupado').length,
-      mantenimiento: puestos.filter((p) => p.estado === 'en_mantenimiento').length,
+    const summary = {
+      total:         spots.length,
+      ocupados:      spots.filter((s) => s.estado === 'ocupado').length,
+      libres:        spots.filter((s) => s.estado === 'desocupado').length,
+      mantenimiento: spots.filter((s) => s.estado === 'en_mantenimiento').length,
     };
 
-    res.status(200).json({
-      success: true,
-      resumen,
-      data: puestosConVehiculo,
-    });
+    res.status(200).json({ success: true, summary, data: spotsWithVehicle });
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * GET /api/v1/parqueadero/puestos/:puestoId
- * Detalle de un puesto específico con el vehículo asignado.
+ * GET /api/v1/parking/spots/:spotId
+ * Returns a specific spot with its assigned vehicle.
  */
-const getPuestoById = async (req, res, next) => {
+const getSpotById = async (req, res, next) => {
   try {
-    const puesto = await Unit.findOne({
-      _id: req.params.puestoId,
+    const spot = await Unit.findOne({
+      _id:         req.params.spotId,
       conjunto_id: req.user.conjunto_id,
-      tipo: 'parqueadero',
+      tipo:        'parqueadero',
     })
       .populate('propietario_actual', 'nombres apellidos')
       .lean();
 
-    if (!puesto) {
-      return res.status(404).json({ success: false, message: 'Puesto de parqueadero no encontrado' });
+    if (!spot) {
+      return res.status(404).json({ success: false, message: 'Parking spot not found' });
     }
 
-    // Adjuntar vehículo asignado (si existe)
-    const vehiculo = await Vehicle.findOne({
-      parqueadero_id: puesto._id,
-      activo: true,
-    })
+    const vehicle = await Vehicle.findOne({ parqueadero_id: spot._id, activo: true })
       .populate('unit_id',        'numero torre')
       .populate('propietario_id', 'nombres apellidos celular')
       .lean();
 
     res.status(200).json({
       success: true,
-      data: { ...puesto, vehiculo_asignado: vehiculo || null },
+      data: { ...spot, vehiculo_asignado: vehicle || null },
     });
   } catch (error) {
     next(error);
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SPOT ASSIGNMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * PATCH /api/v1/parqueadero/vehiculos/:vehiculoId/asignar
- * Asigna un puesto de parqueadero a un vehículo.
- *
- * Validaciones:
- *   1. El vehículo existe y pertenece al conjunto
- *   2. El puesto existe, es tipo='parqueadero' y está desocupado
- *   3. El vehículo no tiene ya otro puesto asignado
+ * PATCH /api/v1/parking/vehicles/:vehicleId/assign
+ * Assigns a parking spot to a vehicle.
+ * Validations: vehicle exists, spot is free, vehicle has no spot yet.
  */
-const asignarParqueadero = async (req, res, next) => {
+const assignSpot = async (req, res, next) => {
   try {
     const { parqueadero_id } = req.body;
 
-    // ── Buscar vehículo ───────────────────────────────────────────────────────
-    const vehiculo = await Vehicle.findOne({
-      _id: req.params.vehiculoId,
+    const vehicle = await Vehicle.findOne({
+      _id:         req.params.vehicleId,
       conjunto_id: req.user.conjunto_id,
-      activo: true,
+      activo:      true,
     });
 
-    if (!vehiculo) {
-      return res.status(404).json({ success: false, message: 'Vehículo no encontrado' });
+    if (!vehicle) {
+      return res.status(404).json({ success: false, message: 'Vehicle not found' });
     }
 
-    // ── Validación: el vehículo ya tiene parqueadero ──────────────────────────
-    if (vehiculo.parqueadero_id) {
+    if (vehicle.parqueadero_id) {
       return res.status(409).json({
         success: false,
-        message: 'Este vehículo ya tiene un parqueadero asignado. Desasígnalo primero.',
+        message: 'This vehicle already has a parking spot. Unassign it first.',
       });
     }
 
-    // ── Buscar y validar el puesto ────────────────────────────────────────────
-    const puesto = await Unit.findOne({
-      _id: parqueadero_id,
+    const spot = await Unit.findOne({
+      _id:         parqueadero_id,
       conjunto_id: req.user.conjunto_id,
-      tipo: 'parqueadero',
+      tipo:        'parqueadero',
     });
 
-    if (!puesto) {
-      return res.status(404).json({ success: false, message: 'Puesto de parqueadero no encontrado' });
+    if (!spot) {
+      return res.status(404).json({ success: false, message: 'Parking spot not found' });
     }
 
-    if (puesto.estado !== 'desocupado') {
+    if (spot.estado !== 'desocupado') {
       return res.status(409).json({
         success: false,
-        message: `El puesto ${puesto.numero} no está disponible (estado: ${puesto.estado})`,
+        message: `Spot ${spot.numero} is not available (status: ${spot.estado})`,
       });
     }
 
-    // ── Asignar: actualizar vehículo + cambiar estado del puesto ─────────────
-    const [vehiculoActualizado] = await Promise.all([
-      Vehicle.findByIdAndUpdate(
-        vehiculo._id,
-        { parqueadero_id },
-        { new: true }
-      )
+    const [updatedVehicle] = await Promise.all([
+      Vehicle.findByIdAndUpdate(vehicle._id, { parqueadero_id }, { new: true })
         .populate('unit_id',        'numero torre')
         .populate('propietario_id', 'nombres apellidos')
         .populate('parqueadero_id', 'numero'),
-
       Unit.findByIdAndUpdate(parqueadero_id, { estado: 'ocupado' }),
     ]);
 
     res.status(200).json({
       success: true,
-      data: vehiculoActualizado,
-      message: `Vehículo ${vehiculo.placa} asignado al puesto ${puesto.numero}`,
+      data: updatedVehicle,
+      message: `Vehicle ${vehicle.placa} assigned to spot ${spot.numero}`,
     });
   } catch (error) {
     next(error);
@@ -382,45 +355,40 @@ const asignarParqueadero = async (req, res, next) => {
 };
 
 /**
- * PATCH /api/v1/parqueadero/vehiculos/:vehiculoId/desasignar
- * Libera el puesto de parqueadero de un vehículo.
+ * PATCH /api/v1/parking/vehicles/:vehicleId/unassign
+ * Frees the parking spot from a vehicle.
  */
-const desasignarParqueadero = async (req, res, next) => {
+const unassignSpot = async (req, res, next) => {
   try {
-    const vehiculo = await Vehicle.findOne({
-      _id: req.params.vehiculoId,
+    const vehicle = await Vehicle.findOne({
+      _id:         req.params.vehicleId,
       conjunto_id: req.user.conjunto_id,
-      activo: true,
+      activo:      true,
     });
 
-    if (!vehiculo) {
-      return res.status(404).json({ success: false, message: 'Vehículo no encontrado' });
+    if (!vehicle) {
+      return res.status(404).json({ success: false, message: 'Vehicle not found' });
     }
 
-    if (!vehiculo.parqueadero_id) {
+    if (!vehicle.parqueadero_id) {
       return res.status(409).json({
         success: false,
-        message: 'Este vehículo no tiene parqueadero asignado',
+        message: 'This vehicle does not have a parking spot assigned',
       });
     }
 
-    const puestoId = vehiculo.parqueadero_id;
+    const spotId = vehicle.parqueadero_id;
 
-    // Liberar puesto y limpiar referencia en el vehículo
-    const [vehiculoActualizado] = await Promise.all([
-      Vehicle.findByIdAndUpdate(
-        vehiculo._id,
-        { parqueadero_id: null },
-        { new: true }
-      ).populate('unit_id', 'numero torre'),
-
-      Unit.findByIdAndUpdate(puestoId, { estado: 'desocupado' }),
+    const [updatedVehicle] = await Promise.all([
+      Vehicle.findByIdAndUpdate(vehicle._id, { parqueadero_id: null }, { new: true })
+        .populate('unit_id', 'numero torre'),
+      Unit.findByIdAndUpdate(spotId, { estado: 'desocupado' }),
     ]);
 
     res.status(200).json({
       success: true,
-      data: vehiculoActualizado,
-      message: `Vehículo ${vehiculo.placa} desasignado. Puesto liberado.`,
+      data: updatedVehicle,
+      message: `Vehicle ${vehicle.placa} unassigned. Spot freed.`,
     });
   } catch (error) {
     next(error);
@@ -428,35 +396,30 @@ const desasignarParqueadero = async (req, res, next) => {
 };
 
 /**
- * GET /api/v1/parqueadero/unidad/:unitId
- * Lista todos los vehículos Y puestos asignados de una unidad específica.
- * Vista útil en la ficha del apartamento.
+ * GET /api/v1/parking/unit/:unitId
+ * Lists all vehicles and their spots for a specific residential unit.
  */
-const getParqueaderoByUnidad = async (req, res, next) => {
+const getVehiclesByUnit = async (req, res, next) => {
   try {
-    // Guard multitenant
     const unit = await Unit.findOne({
-      _id: req.params.unitId,
+      _id:         req.params.unitId,
       conjunto_id: req.user.conjunto_id,
     });
 
     if (!unit) {
-      return res.status(404).json({ success: false, message: 'Unidad no encontrada' });
+      return res.status(404).json({ success: false, message: 'Unit not found' });
     }
 
-    const vehiculos = await Vehicle.find({
-      unit_id: req.params.unitId,
-      activo: true,
-    })
+    const vehicles = await Vehicle.find({ unit_id: req.params.unitId, activo: true })
       .populate('propietario_id', 'nombres apellidos celular')
       .populate('parqueadero_id', 'numero estado')
       .lean();
 
     res.status(200).json({
       success: true,
-      unidad: { numero: unit.numero, torre: unit.torre },
-      total_vehiculos: vehiculos.length,
-      data: vehiculos,
+      unit: { numero: unit.numero, torre: unit.torre },
+      total_vehicles: vehicles.length,
+      data: vehicles,
     });
   } catch (error) {
     next(error);
@@ -464,17 +427,14 @@ const getParqueaderoByUnidad = async (req, res, next) => {
 };
 
 module.exports = {
-  // Vehículos
-  getVehiculos,
-  getVehiculoById,
-  registrarVehiculo,
-  actualizarVehiculo,
-  eliminarVehiculo,
-  // Puestos
-  getPuestos,
-  getPuestoById,
-  // Asignación
-  asignarParqueadero,
-  desasignarParqueadero,
-  getParqueaderoByUnidad,
+  getVehicles,
+  getVehicleById,
+  createVehicle,
+  updateVehicle,
+  deleteVehicle,
+  getSpots,
+  getSpotById,
+  assignSpot,
+  unassignSpot,
+  getVehiclesByUnit,
 };
