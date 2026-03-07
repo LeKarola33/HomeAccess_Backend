@@ -25,6 +25,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const ctrl = require('../controllers/parking.controller');
 const { protect, authorize } = require('../middlewares/auth.middleware');
+const Unit = require('../models/Unit.model');
 
 const router = express.Router();
 
@@ -90,5 +91,45 @@ router.get('/spots/:spotId', ctrl.getSpotById);
 // ─── By unit ──────────────────────────────────────────────────────────────────
 
 router.get('/unit/:unitId',  ctrl.getVehiclesByUnit);
+
+// ─── Bulk create parking spots ────────────────────────────────────────────────
+// POST /api/v1/parking/spots/bulk-create
+// Crea los puestos de parqueadero masivamente (solo admin).
+// Body: { total: 50, prefijo: "P" }
+
+router.post('/spots/bulk-create', authorize('admin'), async (req, res, next) => {
+  try {
+    const total  = Math.min(200, parseInt(req.body.total) || 50);
+    const prefijo = (req.body.prefijo || 'P').toUpperCase().substring(0, 3);
+
+    let created = 0;
+    let skipped = 0;
+
+    for (let i = 1; i <= total; i++) {
+      const numero = `${prefijo}-${String(i).padStart(2, '0')}`;
+      const exists = await Unit.findOne({
+        conjunto_id: req.user.conjunto_id,
+        tipo:        'parqueadero',
+        numero,
+      });
+      if (exists) { skipped++; continue; }
+      await Unit.create({
+        conjunto_id: req.user.conjunto_id,
+        numero,
+        tipo:   'parqueadero',
+        estado: 'desocupado',
+      });
+      created++;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `${created} puestos creados, ${skipped} ya existían`,
+      data: { created, skipped, total_requested: total },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;

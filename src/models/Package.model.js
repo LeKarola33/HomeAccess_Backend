@@ -10,7 +10,7 @@ const packageSchema = new mongoose.Schema(
   {
     conjunto_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Conjunto',
+      ref: 'Complex',
       required: true,
     },
     unit_destino: {

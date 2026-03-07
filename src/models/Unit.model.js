@@ -16,7 +16,7 @@ const unitSchema = new mongoose.Schema(
     },
     conjunto_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Conjunto',
+      ref: 'Complex',
       required: true,
     },
     torre: {
