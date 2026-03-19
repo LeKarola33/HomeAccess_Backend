@@ -12,22 +12,24 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 
 // Rutas del MVP
-const authRoutes = require('./routes/auth.routes');
-const userRoutes = require('./routes/user.routes');
-const unitRoutes = require('./routes/unit.routes');
-const conjuntoRoutes = require('./routes/conjunto.routes');
-const accessRoutes = require('./routes/access.routes');
-const packageRoutes = require('./routes/package.routes');
-const complexRoutes    = require('./routes/complex.routes');
-const commonAreaRoutes = require('./routes/commonArea.routes');
-const eventRoutes      = require('./routes/event.routes');
-const parkingRoutes    = require('./routes/parking.routes');
-const vehicleRoutes = require('./routes/vehicle.routes')
+const authRoutes         = require('./routes/auth.routes');
+const userRoutes         = require('./routes/user.routes');
+const unitRoutes         = require('./routes/unit.routes');
+const conjuntoRoutes     = require('./routes/conjunto.routes');
+const accessRoutes       = require('./routes/access.routes');
+const packageRoutes      = require('./routes/package.routes');
+const complexRoutes      = require('./routes/complex.routes');
+const commonAreaRoutes   = require('./routes/commonArea.routes');
+const eventRoutes        = require('./routes/event.routes');
+const parkingRoutes      = require('./routes/parking.routes');
+const vehicleRoutes      = require('./routes/vehicle.routes');
+const securityGuardRoutes = require('./routes/securityguard.routes'); // ← NUEVO
+const residentRoutes = require('./routes/resident.routes');
 
 
 // Middleware de manejo centralizado de errores
 const errorHandler = require('./middlewares/errorHandler');
-const notFound = require('./middlewares/notFound');
+const notFound     = require('./middlewares/notFound');
 
 const app = express();
 
@@ -47,16 +49,15 @@ app.use(helmet());
  */
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  credentials: true, // permite envío de cookies/tokens
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 }));
 
 /**
  * Rate Limiting global: protege contra ataques de fuerza bruta y DDoS
- * Configuración más estricta para rutas de autenticación (ver auth.routes.js)
  */
 const globalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 min
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
   standardHeaders: true,
   legacyHeaders: false,
@@ -67,10 +68,9 @@ app.use('/api', globalLimiter);
 // ==========================================
 // MIDDLEWARES DE PARSEO Y LOGGING
 // ==========================================
-app.use(express.json({ limit: '10kb' })); // Limita el tamaño del body para prevenir DoS
+app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Morgan: logs HTTP (solo en desarrollo)
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
@@ -78,22 +78,22 @@ if (process.env.NODE_ENV === 'development') {
 // ==========================================
 // RUTAS DE LA API - v1
 // ==========================================
-// Todas las rutas llevan el prefijo /api/v1 para versionado
 
-app.use('/api/v1/auth', authRoutes);           // Registro, login, refresh token
-app.use('/api/v1/users', userRoutes);          // CRUD de usuarios
-app.use('/api/v1/units', unitRoutes);          // CRUD de unidades residenciales
-app.use('/api/v1/conjuntos', conjuntoRoutes);  // CRUD de conjuntos residenciales
-app.use('/api/v1/access-logs', accessRoutes);  // Control de acceso portería
-app.use('/api/v1/packages', packageRoutes);    // Paquetes y correspondencia
-app.use('/api/v1/complexes', complexRoutes);//
-app.use('/api/v1/common-areas', commonAreaRoutes);
-app.use('/api/v1/events', eventRoutes);
-app.use('/api/v1/parking', parkingRoutes);
-app.use('/api/v1/vehicles', vehicleRoutes);//vehiculos
+app.use('/api/v1/auth',            authRoutes);
+app.use('/api/v1/users',           userRoutes);
+app.use('/api/v1/units',           unitRoutes);
+app.use('/api/v1/conjuntos',       conjuntoRoutes);
+app.use('/api/v1/access-logs',     accessRoutes);
+app.use('/api/v1/packages',        packageRoutes);
+app.use('/api/v1/complexes',       complexRoutes);
+app.use('/api/v1/common-areas',    commonAreaRoutes);
+app.use('/api/v1/events',          eventRoutes);
+app.use('/api/v1/parking',         parkingRoutes);
+app.use('/api/v1/vehicles',        vehicleRoutes);
+app.use('/api/v1/securityguard',   securityGuardRoutes); // ← NUEVO
+app.use('/api/v1/resident', residentRoutes);
 
-
-// Health check endpoint (usado por Docker, balanceadores de carga, etc.)
+// Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, status: 'OK', timestamp: new Date().toISOString() });
 });
@@ -101,7 +101,7 @@ app.get('/health', (req, res) => {
 // ==========================================
 // MANEJO DE ERRORES (siempre al final)
 // ==========================================
-app.use(notFound);     // Rutas no encontradas -> 404
-app.use(errorHandler); // Errores globales -> respuesta estandarizada
+app.use(notFound);
+app.use(errorHandler);
 
 module.exports = app;

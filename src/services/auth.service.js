@@ -1,74 +1,43 @@
 /**
  * HomeAccess - Servicio de Autenticación
- * =======================================
- * Lógica de negocio para registro, login y refresh de tokens.
- * Los controllers solo llaman a estos métodos; la lógica vive aquí.
+ * Ruta: src/services/auth.service.js
  */
 
-const jwt = require('jsonwebtoken');
-const User = require('../models/User.model');
+const jwt    = require('jsonwebtoken');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const User   = require('../models/User.model');
+const { sendPasswordResetEmail } = require('./email.service');
 
-/**
- * Genera un par de tokens JWT (access + refresh).
- * @param {string} userId - ID del usuario
- * @param {string} role - Rol del usuario
- * @returns {{ accessToken: string, refreshToken: string }}
- */
 const generateTokenPair = (userId, role) => {
   const payload = { id: userId, role };
-
   const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '15m',
   });
-
   const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   });
-
   return { accessToken, refreshToken };
 };
 
-/**
- * Registra un nuevo usuario en el sistema.
- * @param {Object} userData - Datos del nuevo usuario
- * @returns {Promise<{ user: Object, accessToken: string, refreshToken: string }>}
- */
 const register = async (userData) => {
-  // Verificar si el email ya existe
-  const existingUser = await User.findOne({ email: userData.email }).setOptions({ includeDeleted: true });
+  const existingUser = await User.findOne({ email: userData.email })
+    .setOptions({ includeDeleted: true });
   if (existingUser) {
     const error = new Error('El email ya está registrado');
     error.statusCode = 409;
     throw error;
   }
-
-  // Crear usuario (el password se hashea en el pre-save hook del modelo)
   const user = await User.create({
     ...userData,
-    password_hash: userData.password, // El hook pre-save lo hashea
+    password_hash: userData.password,
   });
-
   const { accessToken, refreshToken } = generateTokenPair(user._id, user.role);
-
-  return {
-    user: user.toPublicJSON(),
-    accessToken,
-    refreshToken,
-  };
+  return { user: user.toPublicJSON(), accessToken, refreshToken };
 };
 
-/**
- * Autentica un usuario con email y contraseña.
- * @param {string} email
- * @param {string} password
- * @returns {Promise<{ user: Object, accessToken: string, refreshToken: string }>}
- */
 const login = async (email, password) => {
-  // Buscar usuario incluyendo el password_hash (select: false por defecto)
   const user = await User.findOne({ email }).select('+password_hash');
-
-  // Mismo mensaje de error para email no encontrado y contraseña incorrecta
-  // (evita enumeración de usuarios)
   const invalidCredentialsError = new Error('Credenciales inválidas');
   invalidCredentialsError.statusCode = 401;
 
@@ -78,42 +47,24 @@ const login = async (email, password) => {
     err.statusCode = 403;
     throw err;
   }
-
   const isPasswordValid = await user.comparePassword(password);
   if (!isPasswordValid) throw invalidCredentialsError;
 
-  // Actualizar último acceso
   await User.findByIdAndUpdate(user._id, { ultimo_acceso: new Date() });
-
   const { accessToken, refreshToken } = generateTokenPair(user._id, user.role);
-
-  return {
-    user: user.toPublicJSON(),
-    accessToken,
-    refreshToken,
-  };
+  return { user: user.toPublicJSON(), accessToken, refreshToken };
 };
 
-/**
- * Renueva el access token usando el refresh token.
- * @param {string} refreshToken
- * @returns {Promise<{ accessToken: string, refreshToken: string }>}
- */
 const refreshAccessToken = async (refreshToken) => {
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-
-    // Verificar que el usuario sigue activo
     const user = await User.findById(decoded.id);
     if (!user || !user.activo) {
       const err = new Error('Token inválido');
       err.statusCode = 401;
       throw err;
     }
-
-    const tokens = generateTokenPair(user._id, user.role);
-    return tokens;
-
+    return generateTokenPair(user._id, user.role);
   } catch (error) {
     if (error.statusCode) throw error;
     const err = new Error('Refresh token inválido o expirado');
@@ -122,4 +73,57 @@ const refreshAccessToken = async (refreshToken) => {
   }
 };
 
-module.exports = { register, login, refreshAccessToken };
+/**
+ * Solicitar recuperación de contraseña.
+ * Genera un token seguro, lo guarda en el usuario y envía el email.
+ */
+const forgotPassword = async (email) => {
+  // Siempre responder igual (evita enumeración de usuarios)
+  const user = await User.findOne({ email });
+  if (!user || !user.activo) return; // silencioso
+
+  // Generar token seguro de 32 bytes
+  const resetToken    = crypto.randomBytes(32).toString('hex');
+  const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+  // Guardar en el usuario (expira en 30 min)
+  user.reset_password_token   = resetTokenHash;
+  user.reset_password_expires = Date.now() + 30 * 60 * 1000;
+  await user.save({ validateBeforeSave: false });
+
+  // Enviar email con el token en claro (no el hash)
+  await sendPasswordResetEmail(
+    user.email,
+    user.nombres || 'Usuario',
+    resetToken
+  );
+};
+
+/**
+ * Restablecer contraseña con el token recibido por email.
+ */
+const resetPassword = async (token, newPassword) => {
+  // Hashear el token recibido para comparar con el guardado
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+  const user = await User.findOne({
+    reset_password_token:   tokenHash,
+    reset_password_expires: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    const err = new Error('Token inválido o expirado');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Actualizar contraseña (el pre-save hook la hashea)
+  user.password_hash          = newPassword;
+  user.reset_password_token   = undefined;
+  user.reset_password_expires = undefined;
+  await user.save();
+
+  return { message: 'Contraseña actualizada correctamente' };
+};
+
+module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword };
