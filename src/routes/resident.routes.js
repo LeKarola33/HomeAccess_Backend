@@ -1,27 +1,11 @@
-/**
- * HomeAccess - Rutas del Portal de Residentes
- * Ruta: src/routes/resident.routes.js
- *
- * Todas las rutas requieren autenticación (protect)
- * y rol residente o propietario.
- *
- * GET /api/v1/resident/packages
- * GET /api/v1/resident/vehicles
- * GET /api/v1/resident/common-areas
- * GET /api/v1/resident/events
- */
-
 const express = require('express');
 const { protect, authorize } = require('../middlewares/auth.middleware');
 const {
-  getMyPackages,
-  getMyVehicles,
-  getCommonAreas,
-  getEvents,
+  getMyPackages, getMyVehicles, getCommonAreas, getEvents,
+  getMyVisitors, registerVisitor, cancelVisitor, searchVisitors,
 } = require('../controllers/resident.controller');
 
 const router = express.Router();
-
 router.use(protect);
 router.use(authorize('residente', 'propietario', 'admin'));
 
@@ -29,5 +13,10 @@ router.get('/packages',     getMyPackages);
 router.get('/vehicles',     getMyVehicles);
 router.get('/common-areas', getCommonAreas);
 router.get('/events',       getEvents);
+
+router.get('/visitors',              getMyVisitors);
+router.post('/visitors',             registerVisitor);
+router.patch('/visitors/:id/cancel', cancelVisitor);
+router.get('/visitors/search',       searchVisitors);
 
 module.exports = router;
