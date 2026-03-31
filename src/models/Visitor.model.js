@@ -16,6 +16,13 @@ const visitorSchema = new mongoose.Schema(
       ref: 'Unit',
     },
 
+    // Apartamento destino que va a visitar
+    unit_destino: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Unit',
+      default: null,
+    },
+
     // Residente que registra la pre-autorización
     residente_id: {
       type: mongoose.Schema.Types.ObjectId,
