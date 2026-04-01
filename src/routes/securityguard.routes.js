@@ -1,8 +1,5 @@
 /**
- * HomeAccess - Security Guard Routes
- * =====================================
- * All routes require: protect + authorize('securityguard', 'admin')
- *
+ * HomeAccess - Rutas del Portal de Portería
  * Base: /api/v1/securityguard
  */
 
@@ -15,35 +12,25 @@ const {
   getUnits, getCommonAreas, getParking, getParkingSpots, getEvents,
 } = require('../controllers/securityguard.controller');
 
-// Roles allowed across all routes
-const ALLOWED_ROLES = ['securityguard', 'admin'];
+// Rol unificado: portero (antes securityguard/vigilante)
+const ALLOWED_ROLES = ['portero', 'admin'];
 
-// Apply auth + authorization to ALL routes in this router
 router.use(protect, authorize(...ALLOWED_ROLES));
 
-// ── Access Logs / Visitors ────────────────────────────────────
 router.get('/access-logs',         getAccessLogs);
 router.get('/access-logs/active',  getActiveVisitors);
 router.post('/access-logs/entry',  registerEntry);
 router.post('/access-logs/exit',   registerExit);
 
-// ── Packages ──────────────────────────────────────────────────
-router.get('/packages',                  getPackages);
-router.post('/packages',                 registerPackage);
-router.patch('/packages/:id/deliver',    deliverPackage);
-router.patch('/packages/:id/return',     returnPackage);
+router.get('/packages',                getPackages);
+router.post('/packages',               registerPackage);
+router.patch('/packages/:id/deliver',  deliverPackage);
+router.patch('/packages/:id/return',   returnPackage);
 
-// ── Units (read-only) ─────────────────────────────────────────
-router.get('/units', getUnits);
-
-// ── Common Areas (read-only) ──────────────────────────────────
+router.get('/units',        getUnits);
 router.get('/common-areas', getCommonAreas);
-
-// ── Parqueadero ───────────────────────────────────────────────
 router.get('/parking',       getParking);
 router.get('/parking-spots', getParkingSpots);
-
-// ── Events (read-only) ───────────────────────────────────────
-router.get('/events', getEvents);
+router.get('/events',        getEvents);
 
 module.exports = router;

@@ -99,7 +99,7 @@ const registerEntry = async (req, res, next) => {
     } = req.body;
 
     const log = await AccessLog.create({
-      conjunto_id:     req.user.conjunto_id,
+      conjunto_id:     req.user.conjunto_id || undefined,
       tipo_persona:    tipo_persona || 'visitante',
       persona_id:      persona_id   || null,
       nombre_visitante,
@@ -132,7 +132,7 @@ const registerExit = async (req, res, next) => {
     } = req.body;
 
     const log = await AccessLog.create({
-      conjunto_id:     req.user.conjunto_id,
+      conjunto_id:     req.user.conjunto_id || undefined,
       tipo_persona:    tipo_persona || 'visitante',
       persona_id:      persona_id   || null,
       nombre_visitante,
@@ -214,7 +214,7 @@ const registerPackage = async (req, res, next) => {
 
     // conjunto_id viene del usuario autenticado
     const pkg = await Package.create({
-      conjunto_id:     req.user.conjunto_id,
+      conjunto_id:     req.user.conjunto_id || undefined,
       unit_destino,
       destinatario_id,
       tipo:            tipo || 'paquete',
@@ -321,23 +321,22 @@ const getCommonAreas = async (req, res, next) => {
 const getParking = async (req, res, next) => {
   try {
     const { tipo, search } = req.query;
-    const filter = { activo: true };
+    const filter = {};
     if (tipo)   filter.tipo  = tipo;
     if (search) filter.placa = { $regex: search, $options: 'i' };
 
     const vehicles = await Vehicle.find(filter)
-      .populate('unit_id',         'numero torre')
-      .populate('propietario_id',  'nombres apellidos celular')
-      .populate('parqueadero_id',  'numero torre')
+      .populate('unit_id',        'numero torre')
+      .populate('propietario_id', 'nombres apellidos celular')
+      .populate('parqueadero_id', 'numero torre')
       .sort({ placa: 1 });
 
-    // Resumen
-    const total       = await Vehicle.countDocuments({ activo: true });
-    const conPuesto   = await Vehicle.countDocuments({ activo: true, parqueadero_id: { $ne: null } });
-    const sinPuesto   = total - conPuesto;
-    const motos       = await Vehicle.countDocuments({ activo: true, tipo: 'moto' });
-    const carros      = await Vehicle.countDocuments({ activo: true, tipo: 'carro' });
-    const bicicletas  = await Vehicle.countDocuments({ activo: true, tipo: 'bicicleta' });
+    const total      = await Vehicle.countDocuments({});
+    const conPuesto  = await Vehicle.countDocuments({ parqueadero_id: { $ne: null } });
+    const sinPuesto  = total - conPuesto;
+    const motos      = await Vehicle.countDocuments({ tipo: 'moto' });
+    const carros     = await Vehicle.countDocuments({ tipo: 'carro' });
+    const bicicletas = await Vehicle.countDocuments({ tipo: 'bicicleta' });
 
     res.json({
       success: true,
@@ -381,26 +380,20 @@ const getParkingSpots = async (req, res, next) => {
  */
 const getEvents = async (req, res, next) => {
   try {
-    const now = new Date();
-
-    // Excluir cancelados y finalizados muy antiguos
+    // Traer TODOS los eventos sin filtrar por fecha ni conjunto
+    // El middleware del modelo ya excluye soft-deleted (deletedAt != null)
     const events = await Event.find({
       estado: { $in: ['programado', 'en_curso', 'finalizado'] },
     })
       .populate('creado_por', 'nombres apellidos')
       .populate('area_comun_id', 'nombre')
-      .sort({ fecha_inicio: 1 });
+      .sort({ fecha_inicio: -1 }); // más recientes primero
 
-    const upcoming = events.filter(e =>
-      ['programado', 'en_curso'].includes(e.estado) ||
-      new Date(e.fecha_inicio) >= now
-    );
-    const past = events.filter(e =>
-      e.estado === 'finalizado' ||
-      (e.estado !== 'programado' && new Date(e.fecha_inicio) < now)
-    );
-
-    res.json({ success: true, data: { upcoming, past, total: events.length } });
+    res.json({ success: true, data: {
+      upcoming: events,  // mandamos todo como upcoming para que el frontend lo muestre
+      past:     [],
+      total:    events.length,
+    }});
   } catch (err) { next(err); }
 };
 
