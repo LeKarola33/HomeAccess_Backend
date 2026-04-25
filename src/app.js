@@ -32,7 +32,7 @@ const errorHandler = require('./middlewares/errorHandler');
 const notFound     = require('./middlewares/notFound');
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', 1);//configuracion para vercel
 // ==========================================
 // MIDDLEWARES DE SEGURIDAD
 // ==========================================
