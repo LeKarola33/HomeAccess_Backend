@@ -47,8 +47,17 @@ app.use(helmet());
  * CORS: solo permite peticiones desde el origen autorizado
  * En producción, CORS_ORIGIN debe ser el dominio del frontend
  */
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',');
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Permite requests sin origin (Postman, mobile, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS bloqueado para: ${origin}`));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 }));
@@ -63,7 +72,7 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, message: 'Demasiadas peticiones. Intente de nuevo más tarde.' },
 });
-app.use('/api', globalLimiter);
+app.use('/', globalLimiter);
 
 // ==========================================
 // MIDDLEWARES DE PARSEO Y LOGGING
@@ -79,19 +88,19 @@ if (process.env.NODE_ENV === 'development') {
 // RUTAS DE LA API - v1
 // ==========================================
 
-app.use('/api/v1/auth',            authRoutes);
-app.use('/api/v1/users',           userRoutes);
-app.use('/api/v1/units',           unitRoutes);
-app.use('/api/v1/conjuntos',       conjuntoRoutes);
-app.use('/api/v1/access-logs',     accessRoutes);
-app.use('/api/v1/packages',        packageRoutes);
-app.use('/api/v1/complexes',       complexRoutes);
-app.use('/api/v1/common-areas',    commonAreaRoutes);
-app.use('/api/v1/events',          eventRoutes);
-app.use('/api/v1/parking',         parkingRoutes);
-app.use('/api/v1/vehicles',        vehicleRoutes);
-app.use('/api/v1/securityguard',   securityGuardRoutes); // ← NUEVO
-app.use('/api/v1/resident', residentRoutes);
+app.use('/v1/auth', authRoutes);
+app.use('/v1/users', userRoutes);
+app.use('/v1/units', unitRoutes);
+app.use('/v1/conjuntos', conjuntoRoutes);
+app.use('/v1/access-logs', accessRoutes);
+app.use('/v1/packages', packageRoutes);
+app.use('/v1/complexes', complexRoutes);
+app.use('/v1/common-areas', commonAreaRoutes);
+app.use('/v1/events', eventRoutes);
+app.use('/v1/parking', parkingRoutes);
+app.use('/v1/vehicles', vehicleRoutes);
+app.use('/v1/securityguard', securityGuardRoutes);
+app.use('/v1/resident', residentRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
