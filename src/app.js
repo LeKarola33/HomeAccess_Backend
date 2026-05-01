@@ -12,27 +12,27 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 
 // Rutas del MVP
-const authRoutes         = require('./routes/auth.routes');
-const userRoutes         = require('./routes/user.routes');
-const unitRoutes         = require('./routes/unit.routes');
-const conjuntoRoutes     = require('./routes/conjunto.routes');
-const accessRoutes       = require('./routes/access.routes');
-const packageRoutes      = require('./routes/package.routes');
-const complexRoutes      = require('./routes/complex.routes');
-const commonAreaRoutes   = require('./routes/commonArea.routes');
-const eventRoutes        = require('./routes/event.routes');
-const parkingRoutes      = require('./routes/parking.routes');
-const vehicleRoutes      = require('./routes/vehicle.routes');
-const securityGuardRoutes = require('./routes/securityguard.routes'); // ← NUEVO
-const residentRoutes = require('./routes/resident.routes');
-
+const authRoutes          = require('./routes/auth.routes');
+const userRoutes          = require('./routes/user.routes');
+const unitRoutes          = require('./routes/unit.routes');
+const conjuntoRoutes      = require('./routes/conjunto.routes');
+const accessRoutes        = require('./routes/access.routes');
+const packageRoutes       = require('./routes/package.routes');
+const complexRoutes       = require('./routes/complex.routes');
+const commonAreaRoutes    = require('./routes/commonArea.routes');
+const eventRoutes         = require('./routes/event.routes');
+const parkingRoutes       = require('./routes/parking.routes');
+const vehicleRoutes       = require('./routes/vehicle.routes');
+const securityGuardRoutes = require('./routes/securityguard.routes');
+const residentRoutes      = require('./routes/resident.routes');
 
 // Middleware de manejo centralizado de errores
 const errorHandler = require('./middlewares/errorHandler');
 const notFound     = require('./middlewares/notFound');
 
 const app = express();
-app.set('trust proxy', 1);//configuracion para vercel
+app.set('trust proxy', 1); // configuracion para vercel
+
 // ==========================================
 // MIDDLEWARES DE SEGURIDAD
 // ==========================================
@@ -44,14 +44,17 @@ app.set('trust proxy', 1);//configuracion para vercel
 app.use(helmet());
 
 /**
- * CORS: solo permite peticiones desde el origen autorizado
+ * CORS: permite peticiones desde los orígenes autorizados
  * En producción, CORS_ORIGIN debe ser el dominio del frontend
+ * Se pueden definir múltiples orígenes separados por coma en la variable de entorno
  */
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',');
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim()); // <-- elimina espacios accidentales
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Permite requests sin origin (Postman, mobile, server-to-server)
+    // Permite requests sin origin (Postman, apps móviles, server-to-server)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -87,20 +90,19 @@ if (process.env.NODE_ENV === 'development') {
 // ==========================================
 // RUTAS DE LA API - v1
 // ==========================================
-
-app.use('/v1/auth', authRoutes);
-app.use('/v1/users', userRoutes);
-app.use('/v1/units', unitRoutes);
-app.use('/v1/conjuntos', conjuntoRoutes);
-app.use('/v1/access-logs', accessRoutes);
-app.use('/v1/packages', packageRoutes);
-app.use('/v1/complexes', complexRoutes);
-app.use('/v1/common-areas', commonAreaRoutes);
-app.use('/v1/events', eventRoutes);
-app.use('/v1/parking', parkingRoutes);
-app.use('/v1/vehicles', vehicleRoutes);
+app.use('/v1/auth',          authRoutes);
+app.use('/v1/users',         userRoutes);
+app.use('/v1/units',         unitRoutes);
+app.use('/v1/conjuntos',     conjuntoRoutes);
+app.use('/v1/access-logs',   accessRoutes);
+app.use('/v1/packages',      packageRoutes);
+app.use('/v1/complexes',     complexRoutes);
+app.use('/v1/common-areas',  commonAreaRoutes);
+app.use('/v1/events',        eventRoutes);
+app.use('/v1/parking',       parkingRoutes);
+app.use('/v1/vehicles',      vehicleRoutes);
 app.use('/v1/securityguard', securityGuardRoutes);
-app.use('/v1/resident', residentRoutes);
+app.use('/v1/resident',      residentRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
