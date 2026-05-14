@@ -25,6 +25,10 @@ const parkingRoutes       = require('./routes/parking.routes');
 const vehicleRoutes       = require('./routes/vehicle.routes');
 const securityGuardRoutes = require('./routes/securityguard.routes');
 const residentRoutes      = require('./routes/resident.routes');
+<<<<<<< HEAD
+=======
+const bookingRoutes       = require('./routes/booking.routes'); // ← NUEVO
+>>>>>>> 1380ef4 (cambios en el areas comunes)
 
 // Middleware de manejo centralizado de errores
 const errorHandler = require('./middlewares/errorHandler');
@@ -37,12 +41,9 @@ app.set('trust proxy', 1); // configuracion para vercel
 // MIDDLEWARES DE SEGURIDAD
 // ==========================================
 
-/**
- * Helmet: configura headers HTTP de seguridad
- * Previene XSS, clickjacking, sniffing de MIME, etc.
- */
 app.use(helmet());
 
+<<<<<<< HEAD
 /**
  * CORS: permite peticiones desde los orígenes autorizados
  * En producción, CORS_ORIGIN debe ser el dominio del frontend
@@ -52,6 +53,8 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map(o => o.trim()); // <-- elimina espacios accidentales
 
+=======
+>>>>>>> 1380ef4 (cambios en el areas comunes)
 app.use(cors({
   origin: (origin, callback) => {
     // Permite requests sin origin (Postman, apps móviles, server-to-server)
@@ -65,9 +68,6 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 }));
 
-/**
- * Rate Limiting global: protege contra ataques de fuerza bruta y DDoS
- */
 const globalLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
@@ -90,6 +90,7 @@ if (process.env.NODE_ENV === 'development') {
 // ==========================================
 // RUTAS DE LA API - v1
 // ==========================================
+<<<<<<< HEAD
 app.use('/api/v1/auth',          authRoutes);
 app.use('/api/v1/users',         userRoutes);
 app.use('/api/v1/units',         unitRoutes);
@@ -103,6 +104,23 @@ app.use('/api/v1/parking',       parkingRoutes);
 app.use('/api/v1/vehicles',      vehicleRoutes);
 app.use('/api/v1/securityguard', securityGuardRoutes);
 app.use('/api/v1/resident',      residentRoutes);
+=======
+
+app.use('/api/v1/auth',           authRoutes);
+app.use('/api/v1/users',          userRoutes);
+app.use('/api/v1/units',          unitRoutes);
+app.use('/api/v1/conjuntos',      conjuntoRoutes);
+app.use('/api/v1/access-logs',    accessRoutes);
+app.use('/api/v1/packages',       packageRoutes);
+app.use('/api/v1/complexes',      complexRoutes);
+app.use('/api/v1/common-areas',   commonAreaRoutes);
+app.use('/api/v1/events',         eventRoutes);
+app.use('/api/v1/parking',        parkingRoutes);
+app.use('/api/v1/vehicles',       vehicleRoutes);
+app.use('/api/v1/securityguard',  securityGuardRoutes);
+app.use('/api/v1/resident',       residentRoutes);
+app.use('/api/v1/bookings',       bookingRoutes); // ← NUEVO
+>>>>>>> 1380ef4 (cambios en el areas comunes)
 
 // Health check
 app.get('/health', (req, res) => {
