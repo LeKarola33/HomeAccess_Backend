@@ -1,6 +1,6 @@
 /**
  * HomeAccess - Rutas de Control de Acceso
- * =========================================
+ * ========================================
  * POST /api/v1/access-logs           -> registrar acceso (portero/admin)
  * GET  /api/v1/access-logs           -> listar registros (portero/admin)
  * GET  /api/v1/access-logs/active    -> personas actualmente adentro
