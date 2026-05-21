@@ -6,17 +6,10 @@
 
 const User = require('../models/User.model');
 
-/**
- * POST /api/v1/users/create
- * Crea un nuevo usuario desde el panel de administración.
- * Solo accesible por admin. Registra el consentimiento automáticamente
- * (el admin declara haber obtenido autorización del titular - Ley 1581).
- */
 const createUser = async (req, res, next) => {
   try {
     const { password, confirmPassword, ...userData } = req.body;
 
-    // Verificar que el email no esté ya registrado
     const existing = await User.findOne({ email: userData.email })
       .setOptions({ includeDeleted: true });
     if (existing) {
@@ -28,13 +21,13 @@ const createUser = async (req, res, next) => {
 
     const user = await User.create({
       ...userData,
-      password_hash: password,              // Pre-save hook hashea la contraseña
-      conjunto_id: req.user.conjunto_id,    // Heredar el conjunto del admin
+      password_hash: password,
+      conjunto_id: req.user.conjunto_id,
       consent: {
         dado: true,
         fecha: new Date(),
         version: '1.0',
-        canal: 'presencial',                // Registrado por el administrador
+        canal: 'presencial',
         ip: req.ip,
       },
     });
@@ -49,25 +42,17 @@ const createUser = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/v1/users
- * Lista usuarios del conjunto con paginación y filtros.
- * Solo accesible por admin.
- */
 const getUsers = async (req, res, next) => {
   try {
-    // Paginación estandarizada: ?page=1&limit=20&sort=createdAt:desc
-    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
-    const skip = (page - 1) * limit;
+    const skip  = (page - 1) * limit;
 
-    // Ordenamiento: "campo:desc" o "campo:asc"
     const [sortField, sortOrder] = (req.query.sort || 'createdAt:desc').split(':');
     const sort = { [sortField]: sortOrder === 'desc' ? -1 : 1 };
 
-    // Filtros opcionales
     const filter = { conjunto_id: req.user.conjunto_id };
-    if (req.query.role) filter.role = req.query.role;
+    if (req.query.role)   filter.role   = req.query.role;
     if (req.query.activo !== undefined) filter.activo = req.query.activo === 'true';
 
     const [users, total] = await Promise.all([
@@ -78,22 +63,13 @@ const getUsers = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: users,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * GET /api/v1/users/:id
- * Obtiene un usuario por ID.
- */
 const getUserById = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id)
@@ -110,24 +86,39 @@ const getUserById = async (req, res, next) => {
   }
 };
 
-/**
- * PUT /api/v1/users/:id
- * Actualiza datos de un usuario. Solo admin o el propio usuario.
- */
 const updateUser = async (req, res, next) => {
   try {
-    // Campos que NO se pueden actualizar por esta ruta (seguridad)
-    const restricted = ['password_hash', 'role', 'conjunto_id', 'deletedAt'];
+    const restricted = ['password_hash', 'conjunto_id', 'deletedAt'];
     restricted.forEach((field) => delete req.body[field]);
 
-    // Solo admin puede cambiar el rol
     if (req.body.role && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Sin permisos para cambiar el rol' });
     }
 
+    const { ninos, mascotas, ...rest } = req.body;
+
+    // ── DEBUG: ver qué llega al backend ──────────────────────────
+    console.log('══ updateUser DEBUG ══');
+    console.log('ID:', req.params.id);
+    console.log('ninos recibidos:', JSON.stringify(ninos));
+    console.log('mascotas recibidas:', JSON.stringify(mascotas));
+    console.log('rest keys:', Object.keys(rest));
+    // ─────────────────────────────────────────────────────────────
+
+    const updatePayload = {
+      $set: {
+        ...rest,
+        updatedAt: new Date(),
+        ...(ninos    !== undefined && { ninos }),
+        ...(mascotas !== undefined && { mascotas }),
+      },
+    };
+
+    console.log('updatePayload.$set.ninos:', JSON.stringify(updatePayload.$set.ninos));
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, updatedAt: new Date() },
+      updatePayload,
       { new: true, runValidators: true }
     );
 
@@ -135,37 +126,31 @@ const updateUser = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     }
 
-    res.status(200).json({ success: true, data: user.toPublicJSON(), message: 'Usuario actualizado' });
+    console.log('user.ninos después de guardar:', JSON.stringify(user.ninos));
+
+    res.status(200).json({
+      success: true,
+      data: user.toPublicJSON(),
+      message: 'Usuario actualizado',
+    });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * DELETE /api/v1/users/:id
- * Soft delete: marca el usuario como eliminado sin borrar el registro.
- * Obligatorio para cumplir con Ley 1581 (retención de datos).
- * Solo admin puede realizar esta acción.
- */
 const deleteUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { activo: false }, // ✅ SOLO desactivar
+      { activo: false },
       { new: true }
     );
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Usuario no encontrado'
-      });
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Usuario desactivado exitosamente'
-    });
+    res.status(200).json({ success: true, message: 'Usuario desactivado exitosamente' });
   } catch (error) {
     next(error);
   }
