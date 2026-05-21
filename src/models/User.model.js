@@ -18,7 +18,7 @@ const userSchema = new mongoose.Schema(
     },
     tipo_documento: {
       type: String,
-      enum: ['CC', 'CE', 'PAS', 'TI'],
+      enum: ['CC', 'CE', 'PAS', 'TI', 'RC'],
       default: 'CC',
     },
     nombres: {
@@ -66,33 +66,54 @@ const userSchema = new mongoose.Schema(
     },
 
     // --- Seguridad: contraseña hasheada ---
-    // NUNCA almacenar la contraseña en texto plano
     password_hash: {
       type: String,
       required: [true, 'La contraseña es requerida'],
       minlength: 8,
-      select: false, // No se retorna en queries por defecto
+      select: false,
     },
 
     // --- Relaciones ---
-    // Conjunto al que pertenece (permite multitenancy futuro)
     conjunto_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Conjunto',
     },
-    // Unidades vinculadas al usuario (un propietario puede tener varias)
     unidades: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Unit',
     }],
 
+    // ── Niños del residente (Ley 1581 — menores de edad) ──────────
+    ninos: [
+      {
+        nombres:          { type: String, trim: true },
+        fecha_nacimiento: { type: Date },
+        tipo_documento:   { type: String, enum: ['CC', 'CE', 'PAS', 'TI', 'RC'], default: 'TI' },
+        documento:        { type: String, trim: true },
+      },
+    ],
+
+    // ── Mascotas del residente ────────────────────────────────────
+    mascotas: [
+      {
+        nombre:  { type: String, trim: true },
+        especie: {
+          type: String,
+          enum: ['perro', 'gato', 'ave', 'pez', 'conejo', 'reptil', 'otro'],
+          default: 'perro',
+        },
+        raza:   { type: String, trim: true },
+        color:  { type: String, trim: true },
+      },
+    ],
+
     // --- Consentimiento (Ley 1581 de 2012 - Obligatorio) ---
     consent: {
-      dado: { type: Boolean, default: false },
-      fecha: { type: Date },
-      version: { type: String }, // Versión de la política aceptada
-      ip: { type: String },      // IP desde donde se aceptó
-      canal: { type: String, enum: ['web', 'app', 'presencial'] },
+      dado:    { type: Boolean, default: false },
+      fecha:   { type: Date },
+      version: { type: String },
+      ip:      { type: String },
+      canal:   { type: String, enum: ['web', 'app', 'presencial'] },
     },
 
     // --- Estado y auditoría ---
@@ -103,21 +124,17 @@ const userSchema = new mongoose.Schema(
     ultimo_acceso: {
       type: Date,
     },
-    // Soft delete: no se borra el registro, solo se marca la fecha
-    // Obligatorio para cumplir con retención de datos Ley 1581
     deletedAt: {
       type: Date,
       default: null,
     },
 
-    // Solicitudes ARCO (Acceso, Rectificación, Cancelación, Oposición)
     arco_solicitudes: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'ArcoRequest',
     }],
   },
   {
-    // Mongoose agrega automáticamente createdAt y updatedAt
     timestamps: true,
   }
 );
@@ -125,23 +142,15 @@ const userSchema = new mongoose.Schema(
 // ==========================================
 // ÍNDICES
 // ==========================================
-// Email único global (login y búsquedas frecuentes)
 userSchema.index({ email: 1 }, { unique: true });
-// Cédula única por conjunto (un residente puede estar en varios conjuntos en el futuro)
 userSchema.index({ cedula: 1, conjunto_id: 1 }, { unique: true, sparse: true });
-// Para filtrar usuarios activos/inactivos eficientemente
 userSchema.index({ activo: 1, role: 1 });
 
 // ==========================================
 // MIDDLEWARE PRE-SAVE: Hashear contraseña
 // ==========================================
-/**
- * Solo hashea la contraseña si fue modificada.
- * Evita re-hashear en cada actualización del documento.
- */
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password_hash')) return next();
-
   const rounds = parseInt(process.env.BCRYPT_ROUNDS) || 12;
   this.password_hash = await bcrypt.hash(this.password_hash, rounds);
   next();
@@ -150,20 +159,10 @@ userSchema.pre('save', async function (next) {
 // ==========================================
 // MÉTODOS DE INSTANCIA
 // ==========================================
-
-/**
- * Compara una contraseña en texto plano con el hash almacenado.
- * @param {string} candidatePassword - Contraseña ingresada por el usuario
- * @returns {Promise<boolean>}
- */
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password_hash);
 };
 
-/**
- * Retorna los datos del usuario sin información sensible.
- * Útil para respuestas de la API.
- */
 userSchema.methods.toPublicJSON = function () {
   const obj = this.toObject();
   delete obj.password_hash;
@@ -174,10 +173,6 @@ userSchema.methods.toPublicJSON = function () {
 // ==========================================
 // QUERY MIDDLEWARE: Excluir soft-deleted
 // ==========================================
-/**
- * Por defecto, todos los queries excluyen documentos con deletedAt.
- * Para incluirlos, usar: Model.find().setOptions({ includeDeleted: true })
- */
 userSchema.pre(/^find/, function (next) {
   if (!this.getOptions().includeDeleted) {
     this.where({ deletedAt: null });
